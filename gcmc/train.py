@@ -28,7 +28,7 @@ tf.set_random_seed(seed)
 # Define parameters
 DATASET = 'ml_100k'
 DATASEED = 1234
-NB_EPOCH = 10
+NB_EPOCH = 1000
 DO = 0.7
 HIDDEN = [500, 75]
 FEATHIDDEN = 10
@@ -394,6 +394,6 @@ print('\nSETTINGS:\n')
 print('global seed = ', seed)
 
 # For parsing results from file
-print('best_val_score', float(best_val_score), 'best_epoch', best_epoch)
+print('best_val_score', float(best_val_score), '\nbest_epoch', best_epoch)
 
 sess.close()
