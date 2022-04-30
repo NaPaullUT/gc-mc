@@ -1,7 +1,7 @@
 from __future__ import print_function
 
 
-from initializations import *
+from gcmc.initializations import *
 import tensorflow as tf
 
 # global unique layer ID dictionary for layer name assignment

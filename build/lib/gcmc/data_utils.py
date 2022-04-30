@@ -9,9 +9,9 @@ import scipy.sparse as sp
 import random
 
 # For automatic dataset downloading
-#from urllib3 import urlopen
+from urllib2 import urlopen
 from zipfile import ZipFile
-#from StringIO import StringIO
+from StringIO import StringIO
 import shutil
 import os.path
 
@@ -53,7 +53,7 @@ def map_data(data):
     uniq = list(set(data))
 
     id_dict = {old: new for new, old in enumerate(sorted(uniq))}
-    data = np.array(list(map(lambda x: id_dict[x], data)))
+    data = np.array(map(lambda x: id_dict[x], data))
     n = len(uniq)
 
     return data, id_dict, n
@@ -64,7 +64,7 @@ def download_dataset(dataset, files, data_dir):
 
     if not np.all([os.path.isfile(data_dir + f) for f in files]):
         url = "http://files.grouplens.org/datasets/movielens/" + dataset.replace('_', '-') + '.zip'
-        request = None#urlopen(url)
+        request = urlopen(url)
 
         print('Downloading %s dataset' % dataset)
         if dataset in ['ml_100k', 'ml_1m']:
@@ -74,8 +74,8 @@ def download_dataset(dataset, files, data_dir):
         else:
             raise ValueError('Invalid dataset option %s' % dataset)
 
-        #with ZipFile(StringIO(request.read())) as zip_ref:
-        #    zip_ref.extractall('data/')
+        with ZipFile(StringIO(request.read())) as zip_ref:
+            zip_ref.extractall('data/')
 
         source = [target_dir + '/' + s for s in os.listdir(target_dir)]
         destination = data_dir+'/'

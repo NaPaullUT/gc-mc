@@ -3,13 +3,13 @@ from __future__ import print_function
 
 import numpy as np
 import scipy.sparse as sp
-import pickle as pkl
+import cPickle as pkl
 import os
 import h5py
 import pandas as pd
 
 
-from data_utils import load_data, map_data, download_dataset
+from gcmc.data_utils import load_data, map_data, download_dataset
 
 
 def normalize_features(feat):
@@ -354,11 +354,10 @@ def load_official_trainvaltest_split(dataset, testing=False):
         filename_test, sep=sep, header=None,
         names=['u_nodes', 'v_nodes', 'ratings', 'timestamp'], dtype=dtypes)
 
-    data_array_train = data_train.to_numpy()
-    #print(type(data_array_train))
-    #data_array_train = np.array(data_array_train)
-    data_array_test = data_test.to_numpy()
-    #data_array_test = np.array(data_array_test)
+    data_array_train = data_train.as_matrix().tolist()
+    data_array_train = np.array(data_array_train)
+    data_array_test = data_test.as_matrix().tolist()
+    data_array_test = np.array(data_array_test)
 
     data_array = np.concatenate([data_array_train, data_array_test], axis=0)
 
@@ -366,12 +365,8 @@ def load_official_trainvaltest_split(dataset, testing=False):
     v_nodes_ratings = data_array[:, 1].astype(dtypes['v_nodes'])
     ratings = data_array[:, 2].astype(dtypes['ratings'])
 
-    #print(u_nodes_ratings[0:20])
-
     u_nodes_ratings, u_dict, num_users = map_data(u_nodes_ratings)
     v_nodes_ratings, v_dict, num_items = map_data(v_nodes_ratings)
-
-    #print(num_users)
 
     u_nodes_ratings, v_nodes_ratings = u_nodes_ratings.astype(np.int64), v_nodes_ratings.astype(np.int32)
     ratings = ratings.astype(np.float64)
@@ -381,13 +376,10 @@ def load_official_trainvaltest_split(dataset, testing=False):
 
     neutral_rating = -1  # int(np.ceil(np.float(num_classes)/2.)) - 1
 
-    #print(ratings)
-
     # assumes that ratings_train contains at least one example of every rating type
     rating_dict = {r: i for i, r in enumerate(np.sort(np.unique(ratings)).tolist())}
 
     labels = np.full((num_users, num_items), neutral_rating, dtype=np.int32)
-    #print(u_nodes)
     labels[u_nodes, v_nodes] = np.array([rating_dict[r] for r in ratings])
 
     for i in range(len(u_nodes)):
@@ -415,7 +407,7 @@ def load_official_trainvaltest_split(dataset, testing=False):
     pairs_nonzero_test = pairs_nonzero[num_train+num_val:]
 
     # Internally shuffle training set (before splitting off validation set)
-    rand_idx = list(range(len(idx_nonzero_train)))
+    rand_idx = range(len(idx_nonzero_train))
     np.random.seed(42)
     np.random.shuffle(rand_idx)
     idx_nonzero_train = idx_nonzero_train[rand_idx]
@@ -468,7 +460,7 @@ def load_official_trainvaltest_split(dataset, testing=False):
                          'Film-Noir', 'Horror', 'Musical', 'Mystery', 'Romance', 'Sci-Fi',
                          'Thriller', 'War', 'Western']
         movie_df = pd.read_csv(movie_file, sep=sep, header=None,
-                               names=movie_headers, engine='python',encoding='ISO-8859-1')
+                               names=movie_headers, engine='python')
 
         genre_headers = movie_df.columns.values[6:]
         num_genres = genre_headers.shape[0]
@@ -485,7 +477,7 @@ def load_official_trainvaltest_split(dataset, testing=False):
         users_file = 'data/' + dataset + '/u.user'
         users_headers = ['user id', 'age', 'gender', 'occupation', 'zip code']
         users_df = pd.read_csv(users_file, sep=sep, header=None,
-                               names=users_headers, engine='python',encoding='ISO-8859-1')
+                               names=users_headers, engine='python')
 
         occupation = set(users_df['occupation'].values.tolist())
 
