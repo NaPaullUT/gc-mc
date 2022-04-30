@@ -1,11 +1,15 @@
 """ Experiment runner for the model with knowledge graph attached to interaction data """
 
+
 from __future__ import division
 from __future__ import print_function
 
 import argparse
 import datetime
 import time
+
+import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 import tensorflow as tf
 import numpy as np
@@ -15,20 +19,19 @@ import json
 
 from preprocessing import create_trainvaltest_split, \
     sparse_to_tuple, preprocess_user_item_features, globally_normalize_bipartite_adjacency, \
-    load_data_monti, load_official_trainvaltest_split, normalize_features
+    load_data_monti, load_official_trainvaltest_split, normalize_features, load_official_trainvaltest_split_cold_start
 from model import RecommenderGAE, RecommenderSideInfoGAE
 from utils import construct_feed_dict
 
 # Set random seed
 # seed = 123 # use only for unit testing
-seed = int(time.time())
-np.random.seed(seed)
-tf.set_random_seed(seed)
+
 
 # Define parameters
 DATASET = 'ml_100k'
 DATASEED = 1234
 NB_EPOCH = 1000
+num_exp = 10
 DO = 0.7
 HIDDEN = [500, 75]
 FEATHIDDEN = 10
@@ -38,12 +41,17 @@ WRITESUMMARY = 0
 SUMMARIESDIR = 'PATH'
 FEATURES = 1
 SYM = 0
-TESTING = 1
+TESTING = 0
 ACCUM = 'stack'
 
 SELFCONNECTIONS = False
 SPLITFROMFILE = True
-VERBOSE = True
+VERBOSE = False
+
+C_START = True
+
+N_R = 5
+N_C = 5
 
 
 NUMCLASSES = 5
@@ -56,9 +64,15 @@ else:
 
 
 print("Using official MovieLens dataset split u1.base/u1.test with 20% validation set size...")
-u_features, v_features, adj_train, train_labels, train_u_indices, train_v_indices, \
-    val_labels, val_u_indices, val_v_indices, test_labels, \
-    test_u_indices, test_v_indices, class_values = load_official_trainvaltest_split(DATASET, TESTING)
+if not C_START or N_C==0 or N_R==0:
+    u_features, v_features, adj_train, train_labels, train_u_indices, train_v_indices, \
+        val_labels, val_u_indices, val_v_indices, test_labels, \
+        test_u_indices, test_v_indices, class_values = load_official_trainvaltest_split(DATASET, TESTING)
+else: 
+    u_features, v_features, adj_train, train_labels, train_u_indices, train_v_indices, \
+        val_labels, val_u_indices, val_v_indices, test_labels, \
+        test_u_indices, test_v_indices, class_values = load_official_trainvaltest_split_cold_start(DATASET, TESTING,n_c=N_C,n_r=N_R)
+    
 print(train_labels)
 
 num_users, num_items = adj_train.shape
@@ -280,8 +294,7 @@ test_feed_dict = construct_feed_dict(placeholders, u_features, v_features, u_fea
 # Collect all variables to be logged into summary
 merged_summary = tf.summary.merge_all()
 
-sess = tf.Session()
-sess.run(tf.global_variables_initializer())
+
 
 if WRITESUMMARY:
     train_summary_writer = tf.summary.FileWriter(SUMMARIESDIR + '/train', sess.graph)
@@ -290,110 +303,142 @@ else:
     train_summary_writer = None
     val_summary_writer = None
 
-best_val_score = np.inf
-best_val_loss = np.inf
-best_epoch = 0
-wait = 0
+exp_dict = {}
+for _ in range(num_exp):
 
-print('Training...')
+    seed = int(time.time())
+    np.random.seed(seed)
+    tf.set_random_seed(seed)
 
-for epoch in range(NB_EPOCH):
+    sess = tf.Session()
+    sess.run(tf.global_variables_initializer())
 
-    t = time.time()
+    best_val_score = np.inf
+    best_val_loss = np.inf
+    best_epoch = 0
+    wait = 0
 
-    # Run single weight update
-    # outs = sess.run([model.opt_op, model.loss, model.rmse], feed_dict=train_feed_dict)
-    # with exponential moving averages
-    outs = sess.run([model.training_op, model.loss, model.rmse], feed_dict=train_feed_dict)
+    print('\nTraining...')
+    epoch_dict = {
+        't_er':[],
+        'v_er':[]
+    }
+    for epoch in tqdm(range(NB_EPOCH)):
 
-    train_avg_loss = outs[1]
-    train_rmse = outs[2]
+        t = time.time()
 
-    val_avg_loss, val_rmse = sess.run([model.loss, model.rmse], feed_dict=val_feed_dict)
+        # Run single weight update
+        # outs = sess.run([model.opt_op, model.loss, model.rmse], feed_dict=train_feed_dict)
+        # with exponential moving averages
+        outs = sess.run([model.training_op, model.loss, model.rmse], feed_dict=train_feed_dict)
 
-    #store train_rmse and val_rmse here
-    
-    if VERBOSE:
-        print("[*] Epoch:", '%04d' % (epoch + 1), "train_loss=", "{:.5f}".format(train_avg_loss),
-              "train_rmse=", "{:.5f}".format(train_rmse),
-              "val_loss=", "{:.5f}".format(val_avg_loss),
-              "val_rmse=", "{:.5f}".format(val_rmse),
-              "\t\ttime=", "{:.5f}".format(time.time() - t))
-
-    if val_rmse < best_val_score:
-        best_val_score = val_rmse
-        best_epoch = epoch
-
-    if epoch % 20 == 0 and WRITESUMMARY:
-        # Train set summary
-        summary = sess.run(merged_summary, feed_dict=train_feed_dict)
-        train_summary_writer.add_summary(summary, epoch)
-        train_summary_writer.flush()
-
-        # Validation set summary
-        summary = sess.run(merged_summary, feed_dict=val_feed_dict)
-        val_summary_writer.add_summary(summary, epoch)
-        val_summary_writer.flush()
-
-    if epoch % 100 == 0 and epoch > 1000 and not TESTING and False:
-        saver = tf.train.Saver()
-        save_path = saver.save(sess, "tmp/%s_seed%d.ckpt" % (model.name, DATASEED), global_step=model.global_step)
-
-        # load polyak averages
-        variables_to_restore = model.variable_averages.variables_to_restore()
-        saver = tf.train.Saver(variables_to_restore)
-        saver.restore(sess, save_path)
+        train_avg_loss = outs[1]
+        train_rmse = outs[2]
 
         val_avg_loss, val_rmse = sess.run([model.loss, model.rmse], feed_dict=val_feed_dict)
 
-        print('polyak val loss = ', val_avg_loss)
-        print('polyak val rmse = ', val_rmse)
+        epoch_dict['t_er'].append(train_rmse)
+        epoch_dict['v_er'].append(val_rmse)
 
-        # Load back normal variables
-        saver = tf.train.Saver()
-        saver.restore(sess, save_path)
+        #store train_rmse and val_rmse here
+        
+        if VERBOSE:
+            print("[*] Epoch:", '%04d' % (epoch + 1), "train_loss=", "{:.5f}".format(train_avg_loss),
+                "train_rmse=", "{:.5f}".format(train_rmse),
+                "val_loss=", "{:.5f}".format(val_avg_loss),
+                "val_rmse=", "{:.5f}".format(val_rmse),
+                "\t\ttime=", "{:.5f}".format(time.time() - t))
+
+        if val_rmse < best_val_score:
+            best_val_score = val_rmse
+            best_epoch = epoch
+
+        if epoch % 20 == 0 and WRITESUMMARY:
+            # Train set summary
+            summary = sess.run(merged_summary, feed_dict=train_feed_dict)
+            train_summary_writer.add_summary(summary, epoch)
+            train_summary_writer.flush()
+
+            # Validation set summary
+            summary = sess.run(merged_summary, feed_dict=val_feed_dict)
+            val_summary_writer.add_summary(summary, epoch)
+            val_summary_writer.flush()
+
+        if epoch % 100 == 0 and epoch > 1000 and not TESTING and False:
+            saver = tf.train.Saver()
+            save_path = saver.save(sess, "tmp/%s_seed%d.ckpt" % (model.name, DATASEED), global_step=model.global_step)
+
+            # load polyak averages
+            variables_to_restore = model.variable_averages.variables_to_restore()
+            saver = tf.train.Saver(variables_to_restore)
+            saver.restore(sess, save_path)
+
+            val_avg_loss, val_rmse = sess.run([model.loss, model.rmse], feed_dict=val_feed_dict)
+
+            print('polyak val loss = ', val_avg_loss)
+            print('polyak val rmse = ', val_rmse)
+
+            # Load back normal variables
+            saver = tf.train.Saver()
+            saver.restore(sess, save_path)
 
 
-# store model including exponential moving averages
-saver = tf.train.Saver()
-save_path = saver.save(sess, "tmp/%s.ckpt" % model.name, global_step=model.global_step)
+    # store model including exponential moving averages
+    #saver = tf.train.Saver()
+    #save_path = saver.save(sess, "tmp/%s.ckpt" % model.name, global_step=model.global_step)
 
 
-if VERBOSE:
-    print("\nOptimization Finished!")
-    print('best validation score =', best_val_score, 'at iteration', best_epoch)
+    if VERBOSE:
+        print("\nOptimization Finished!")
+        print('best validation score =', best_val_score, 'at iteration', best_epoch)
 
 
-if TESTING:
-    test_avg_loss, test_rmse = sess.run([model.loss, model.rmse], feed_dict=test_feed_dict)
-    print('test loss = ', test_avg_loss)
-    print('test rmse = ', test_rmse)
+    if TESTING:
+        test_avg_loss, test_rmse = sess.run([model.loss, model.rmse], feed_dict=test_feed_dict)
+        print('test loss = ', test_avg_loss)
+        print('test rmse = ', test_rmse)
 
-    # restore with polyak averages of parameters
-    variables_to_restore = model.variable_averages.variables_to_restore()
-    saver = tf.train.Saver(variables_to_restore)
-    saver.restore(sess, save_path)
+        # restore with polyak averages of parameters
+        variables_to_restore = model.variable_averages.variables_to_restore()
+        saver = tf.train.Saver(variables_to_restore)
+        #saver.restore(sess, save_path)
 
-    test_avg_loss, test_rmse = sess.run([model.loss, model.rmse], feed_dict=test_feed_dict)
-    print('polyak test loss = ', test_avg_loss)
-    print('polyak test rmse = ', test_rmse)
+        test_avg_loss, test_rmse = sess.run([model.loss, model.rmse], feed_dict=test_feed_dict)
+        print('polyak test loss = ', test_avg_loss)
+        print('polyak test rmse = ', test_rmse)
 
-else:
-    # restore with polyak averages of parameters
-    variables_to_restore = model.variable_averages.variables_to_restore()
-    saver = tf.train.Saver(variables_to_restore)
-    saver.restore(sess, save_path)
+    else:
+        # restore with polyak averages of parameters
+        #variables_to_restore = model.variable_averages.variables_to_restore()
+        #saver = tf.train.Saver(variables_to_restore)
+        #saver.restore(sess, save_path)
 
-    val_avg_loss, val_rmse = sess.run([model.loss, model.rmse], feed_dict=val_feed_dict)
-    print('polyak val loss = ', val_avg_loss)
-    print('polyak val rmse = ', val_rmse)
+        #val_avg_loss, val_rmse = sess.run([model.loss, model.rmse], feed_dict=val_feed_dict)
+        #print('polyak val loss = ', val_avg_loss)
+        #print('polyak val rmse = ', val_rmse)
+        pass
 
-print('\nSETTINGS:\n')
 
+    #print('global seed = ', seed)
+    exp_dict[str(seed)]=epoch_dict
+    # For parsing results from file
+    print('best_val_score', float(round(best_val_score,3)), 'best_epoch', best_epoch)
 
-print('global seed = ', seed)
+    sess.close()
 
-# For parsing results from file
-print('best_val_score', float(best_val_score), '\nbest_epoch', best_epoch)
+X_plot = np.arange(NB_EPOCH)
+y_tr = []
+y_v = []
+for key in exp_dict.keys():
+    y_tr.append(exp_dict[key]['t_er'])
+    y_v.append(exp_dict[key]['v_er'])
+y_tr=np.array(y_tr)
+print(y_tr.shape)
+y_tr = np.mean(y_tr,axis=0)
+print(y_tr.shape)
+y_v = np.mean(np.array(y_v),axis=0)
 
-sess.close()
+plt.plot(X_plot, y_tr, label = "Train Error")
+plt.plot(X_plot, y_v, label = "Val Error")
+plt.legend()
+plt.show()
