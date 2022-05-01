@@ -48,7 +48,7 @@ SELFCONNECTIONS = False
 SPLITFROMFILE = True
 VERBOSE = False
 
-C_START = True
+C_START = False
 
 N_R = 5
 N_C = 5
@@ -433,9 +433,9 @@ for key in exp_dict.keys():
     y_tr.append(exp_dict[key]['t_er'])
     y_v.append(exp_dict[key]['v_er'])
 y_tr=np.array(y_tr)
-print(y_tr.shape)
+#print(y_tr.shape)
 y_tr = np.mean(y_tr,axis=0)
-print(y_tr.shape)
+#print(y_tr.shape)
 y_v = np.mean(np.array(y_v),axis=0)
 
 plt.plot(X_plot, y_tr, label = "Train Error")
