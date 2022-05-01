@@ -31,7 +31,7 @@ from utils import construct_feed_dict
 DATASET = 'ml_100k'
 DATASEED = 1234
 NB_EPOCH = 1000
-num_exp = 10
+num_exp = 1
 DO = 0.7
 HIDDEN = [500, 75]
 FEATHIDDEN = 10
@@ -48,10 +48,10 @@ SELFCONNECTIONS = False
 SPLITFROMFILE = True
 VERBOSE = False
 
-C_START = False
+C_START = True
 
 N_R = 5
-N_C = 5
+N_C = 50
 
 
 NUMCLASSES = 5
@@ -422,7 +422,7 @@ for _ in range(num_exp):
     #print('global seed = ', seed)
     exp_dict[str(seed)]=epoch_dict
     # For parsing results from file
-    print('best_val_score', float(round(best_val_score,3)), 'best_epoch', best_epoch)
+    print('best_val_score', round(float(best_val_score),3), 'best_epoch', best_epoch)
 
     sess.close()
 
