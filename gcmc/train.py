@@ -51,7 +51,7 @@ VERBOSE = False
 C_START = True
 
 N_R = 5
-N_C = 50
+N_C = 5
 
 
 NUMCLASSES = 5

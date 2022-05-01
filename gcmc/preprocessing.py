@@ -655,8 +655,7 @@ def load_official_trainvaltest_split_cold_start(dataset, testing=False, n_r=1,n_
     pairs_nonzero = np.array([[u, v] for u, v in zip(u_nodes, v_nodes)])
 
     c_users = np.random.choice(u_nodes_ratings, n_c, replace=False)
-    #print(n_c)
-    #print(c_users.shape)
+
     i=0
     while i<(len(c_users)):
         if np.count_nonzero(pairs_nonzero[:,0]==c_users[i])<n_r:
@@ -668,15 +667,9 @@ def load_official_trainvaltest_split_cold_start(dataset, testing=False, n_r=1,n_
     #now i want to find a set of n_r items and create a pairs for them
     c_pairs = None
     u_pairs = None
-    #c_val_pairs = np.array([])
     for u in c_users:
-        #print(u)
-        #print(np.where(pairs_nonzero[:,0]==u))
         temp_pairs = pairs_nonzero[np.where(pairs_nonzero[:,0]==u)]
-        #print(temp_pairs)
         random_choice_array = temp_pairs[np.random.choice(temp_pairs.shape[0], n_r, replace=False),:]
-        #c_pairs=np.concatenate([c_pairs,random_choice_array])
-        #u_pairs=np.concatenate([u_pairs,temp_pairs])
         
         if c_pairs is None:
             c_pairs=random_choice_array
@@ -686,10 +679,7 @@ def load_official_trainvaltest_split_cold_start(dataset, testing=False, n_r=1,n_
             u_pairs=temp_pairs
         else:
             u_pairs=np.concatenate([u_pairs,temp_pairs])
-        
-        #c_items = np.random.choice(u_nodes_ratings, n_c, replace=False)
-    #print(u_pairs.shape)
-    #print(c_pairs.shape)
+
     idx_nonzero = np.array([u * num_items + v for u, v in pairs_nonzero])
     #this is a set of cold start indexes that should be put in training set
     idx_cold_start = np.array([u * num_items + v for u, v in c_pairs])
@@ -704,17 +694,14 @@ def load_official_trainvaltest_split_cold_start(dataset, testing=False, n_r=1,n_
     #for i in range(len(idx_nonzero)):
         #assert(labels[idx_nonzero[i]] == rating_dict[ratings[i]])
 
-    idx_nonzero_train = idx_nonzero[0:num_train+num_val]
-    idx_nonzero_test = idx_nonzero[num_train+num_val:]
-    #idx_nonzero_test = np.setdiff1d(idx_nonzero_test, idx_cold_start)
-    #idx_nonzero_test = np.setdiff1d(idx_nonzero_test, idx_cold_val)
+    idx_nonzero_train = idx_nonzero[0:(-1*num_test)]
+    idx_nonzero_test = idx_nonzero[(-1*num_test):]
 
     #idx_nonzero_test%num_items = v
     #idx_nonzero_test/num_items = u
     pairs_nonzero_train= np.array([[int(idx/num_items),(idx%num_items)] for idx in idx_nonzero_train])
     pairs_nonzero_test= np.array([[int(idx/num_items),(idx%num_items)] for idx in idx_nonzero_test])
-    #pairs_nonzero_train = pairs_nonzero[0:num_train+num_val]
-    #pairs_nonzero_test = pairs_nonzero[num_train+num_val:]
+
 
     # Internally shuffle training set (before splitting off validation set)
     rand_idx = list(range(len(idx_nonzero_train)))
@@ -732,20 +719,12 @@ def load_official_trainvaltest_split_cold_start(dataset, testing=False, n_r=1,n_
     idx_nonzero = np.concatenate([val_idx, train_idx,test_idx], axis=0)
 
     pairs_nonzero = np.array([[int(idx/num_items),(idx%num_items)] for idx in idx_nonzero])
-    #np.concatenate([u_pairs,pairs_nonzero_train, pairs_nonzero_test])
 
     assert(len(test_idx) == num_test)
 
-    #val_pairs_idx = pairs_nonzero[0:num_val]
     val_pairs_idx = np.array([[int(idx/num_items),(idx%num_items)] for idx in val_idx])
-    #train_pairs_idx = pairs_nonzero[num_val:num_train + num_val]
-    #test_pairs_idx = pairs_nonzero[num_train + num_val:]
     train_pairs_idx = np.array([[int(idx/num_items),(idx%num_items)] for idx in train_idx])
     test_pairs_idx = np.array([[int(idx/num_items),(idx%num_items)] for idx in test_idx])
-
-    #print(train_pairs_idx)
-    #print(c_pairs)
-    #raise NotImplementedError
 
     u_test_idx, v_test_idx = test_pairs_idx.transpose()
     u_val_idx, v_val_idx = val_pairs_idx.transpose()
